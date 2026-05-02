@@ -1,0 +1,21 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "args": ["--verbose"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Build",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "cmd.exe",
+            "runtimeArgs": ["/c", "${workspaceFolder}\\build.bat"],
+            "console": "integratedTerminal"
+        }
+    ]
+}

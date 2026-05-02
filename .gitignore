@@ -21,7 +21,6 @@ env/
 
 # IDE
 .idea/
-.vscode/
 *.iml
 
 # OS
