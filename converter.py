@@ -82,12 +82,15 @@ class ItemInfo:
 # ── save-folder helpers ────────────────────────────────────────────────────────
 
 def find_slot_dirs(save_dir: Path) -> list[Path]:
-    """Return all numeric slot subdirs (0/, 1/, …) that contain a Ugc folder."""
+    """Return all numeric slot subdirs (0/, 1/, …) that contain a Ugc folder, OR the selected folder if it has a Ugc folder."""
     slots = []
     try:
         for d in sorted(save_dir.iterdir()):
             if d.is_dir() and d.name.isdigit() and (d / "Ugc").is_dir():
                 slots.append(d)
+                
+        if save_dir.is_dir() and (save_dir / "Ugc").is_dir():
+            slots.append(save_dir)
     except OSError:
         pass
     return slots
@@ -175,7 +178,8 @@ def decode_thumb(thumb_path: Path) -> Optional[Image.Image]:
         raw = zstd.ZstdDecompressor().decompress(thumb_path.read_bytes())
         ds  = nsw_deswizzle(raw, (256, 256), (4, 4), 16, 3)
         dds = _make_dds(ds, 256, 256, b"DXT5")
-        return Image.open(io.BytesIO(dds)).convert("RGBA")
+        img = Image.open(io.BytesIO(dds)).convert("RGBA")
+        return img
     except Exception:
         return None
 
@@ -186,7 +190,8 @@ def decode_ugctex(ugctex_path: Path) -> Optional[Image.Image]:
         raw = zstd.ZstdDecompressor().decompress(ugctex_path.read_bytes())
         ds  = nsw_deswizzle(raw, (512, 512), (4, 4), 8, 4)
         dds = _make_dds(ds, 512, 512, b"DXT1")
-        return Image.open(io.BytesIO(dds)).convert("RGBA")
+        img = Image.open(io.BytesIO(dds)).convert("RGBA")
+        return gamma_up(img)
     except Exception:
         return None
 
@@ -195,18 +200,16 @@ def decode_ugctex(ugctex_path: Path) -> Optional[Image.Image]:
 
 def png_to_canvas(img: Image.Image) -> bytes:
     """Convert a PIL image → raw swizzled CANVAS blob (256×256 RGBA)."""
-    img = img.convert("RGBA")
-    if img.size != (256, 256):
-        img = ImageOps.fit(img, (256, 256), Image.LANCZOS)
+    img = prepare_png(img, 256)
+    
     raw = img.tobytes("raw")
     return bytes(nsw_swizzle(raw, (256, 256), (1, 1), 4, SWIZZLE_MODE))
 
 
 def png_to_ugctex(img: Image.Image) -> bytes:
     """Convert a PIL image → raw swizzled UGCTEX blob (512×512 DXT1)."""
-    img = img.convert("RGBA")
-    if img.size != (512, 512):
-        img = ImageOps.fit(img, (512, 512), Image.LANCZOS)
+    img = prepare_png(img, 512)
+    
     buf = io.BytesIO()
     img.save(buf, format="DDS", pixel_format="DXT1")
     dxt1_data = buf.getvalue()[128:]
@@ -215,14 +218,21 @@ def png_to_ugctex(img: Image.Image) -> bytes:
 
 def png_to_thumb(img: Image.Image) -> bytes:
     """Convert a PIL image → raw swizzled thumbnail blob (256×256 BC3/DXT5)."""
-    img = img.convert("RGBA")
-    if img.size != (256, 256):
-        img = ImageOps.fit(img, (256, 256), Image.LANCZOS)
+    img = prepare_png(img, 256, False)
+
     buf = io.BytesIO()
     img.save(buf, format="DDS", pixel_format="DXT5")
     dxt5_data = buf.getvalue()[128:]
     return bytes(nsw_swizzle(dxt5_data, (256, 256), (4, 4), 16, 3))
 
+
+def prepare_png(img: Image.Image, size:int, change_gamma:bool = True) -> Image.Image:
+    if change_gamma:
+        img = gamma_down(img.convert("RGBA"))
+    if img.size != (size, size):
+        img = ImageOps.fit(img, (size, size), Image.Resampling.LANCZOS)
+    return img
+    
 
 def zstd_compress(data: bytes) -> bytes:
     return zstd.ZstdCompressor(level=ZSTD_LEVEL).compress(data)
@@ -296,3 +306,16 @@ def get_highest_id(folder: Path, mode: str) -> Optional[int]:
     except OSError:
         pass
     return max_id
+
+# ── gamma helpers ─────────────────────────────────────────────────────────────
+
+def gamma_edit(img: Image.Image, gamma: float) -> Image.Image:
+    def adjust(x: float) -> float:
+        return ((x / 255) ** gamma) * 255
+    return img.point(adjust)
+
+def gamma_up(img: Image.Image) -> Image.Image:
+    return gamma_edit(img, 0.4545)
+    
+def gamma_down(img: Image.Image) -> Image.Image:
+    return gamma_edit(img, 2.2)

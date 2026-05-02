@@ -20,5 +20,3 @@ python main.py
 
 :: Deactivate the virtual environment after script execution
 @REM env\Scripts\deactivate
-
-pause

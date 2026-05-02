@@ -19,5 +19,3 @@ echo Building...
 python -m PyInstaller TomodachiTextureTool.spec
 
 echo Done! Executable is at: dist\TomodachiTextureTool.exe
-
-pause
